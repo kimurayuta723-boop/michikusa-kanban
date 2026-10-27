@@ -1,23 +1,23 @@
 // オフラインでも図鑑を開けるように、アプリ本体をキャッシュする。
 // ファイルを更新したら VERSION を上げると、次回起動時に入れ替わる。
-const VERSION = 'v1';
+const VERSION = 'v2';
 const CACHE = `michikusa-${VERSION}`;
 const SHELL = [
   './',
   './index.html',
-  './css/style.css',
-  './js/app.js',
-  './js/db.js',
-  './js/image.js',
-  './js/color.js',
-  './js/tags.js',
-  './js/tagger.js',
-  './js/mascot.js',
+  './style.css',
+  './app.js',
+  './db.js',
+  './image.js',
+  './color.js',
+  './tags.js',
+  './tagger.js',
+  './mascot.js',
   './manifest.webmanifest',
-  './icons/apple-touch-icon.png',
-  './icons/icon-192.png',
-  './icons/icon-512.png',
-  './icons/favicon-32.png',
+  './apple-touch-icon.png',
+  './icon-192.png',
+  './icon-512.png',
+  './favicon-32.png',
   'https://unpkg.com/leaflet@1.9.4/dist/leaflet.css',
   'https://unpkg.com/leaflet@1.9.4/dist/leaflet.js',
 ];
