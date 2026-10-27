@@ -1,6 +1,6 @@
 // オフラインでも図鑑を開けるように、アプリ本体をキャッシュする。
 // ファイルを更新したら VERSION を上げると、次回起動時に入れ替わる。
-const VERSION = 'v3';
+const VERSION = 'v4';
 const CACHE = `michikusa-${VERSION}`;
 const SHELL = [
   './',
@@ -20,6 +20,9 @@ const SHELL = [
   './favicon-32.png',
   'https://unpkg.com/leaflet@1.9.4/dist/leaflet.css',
   'https://unpkg.com/leaflet@1.9.4/dist/leaflet.js',
+  'https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.css',
+  'https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.js',
+  'https://unpkg.com/@maplibre/maplibre-gl-leaflet@0.0.20/leaflet-maplibre-gl.js',
 ];
 
 self.addEventListener('install', (e) => {

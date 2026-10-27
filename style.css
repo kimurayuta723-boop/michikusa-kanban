@@ -157,7 +157,11 @@ body.hide-tabbar #view { padding-bottom: calc(var(--safe-bottom) + 24px); }
 .pin img { width: 100%; height: 100%; object-fit: cover; }
 .pin.gone img { filter: sepia(.9) saturate(.5); }
 .here { border-radius: 50%; background: #4F7DB3; box-shadow: 0 0 0 6px rgba(79,125,179,.22), inset 0 0 0 3px #fff; }
-.leaflet-container { font-family: inherit; background: #F4EEE2; }
+.leaflet-container { font-family: inherit; background: #F8F3EA; }
+/* 予備の画像タイル(国土地理院・OSM)を淡いクリーム寄りに */
+.tiles-soft .leaflet-tile-pane { filter: grayscale(.85) sepia(.18) brightness(1.06) contrast(.8); }
+.leaflet-control-attribution { background: rgba(251,246,236,.85) !important; color: var(--muted) !important; border-radius: 8px 0 0 0; }
+.leaflet-control-attribution a { color: var(--muted) !important; }
 .leaflet-control-attribution { font-size: 9px; }
 .leaflet-bottom.leaflet-right { bottom: var(--tabbar-h); }
 

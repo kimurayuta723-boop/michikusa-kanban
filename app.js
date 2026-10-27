@@ -287,20 +287,125 @@ function structuredCloneSign(s) {
 // ---------- 地図 ----------
 let map = null, markerLayer = null, hereMarker = null, mapFitted = false;
 
-// 背景地図:国土地理院の淡色地図(申請不要・出典表示が必要)
-function baseTiles({ attribution }) {
-  return L.tileLayer('https://cyberjapandata.gsi.go.jp/xyz/pale/{z}/{x}/{y}.png', {
-    minZoom: 5,
-    maxNativeZoom: 18,
-    maxZoom: 20,
-    attribution: attribution ? '<a href="https://maps.gsi.go.jp/development/ichiran.html" target="_blank" rel="noopener">地理院タイル</a>' : '',
-  });
+// 背景地図:「色あせる前に」と同じく OpenFreeMap(Positron)のベクター地図を使い、
+// 読み込めないときは 国土地理院 → OpenStreetMap の順に切り替える。
+const PROVIDERS = [
+  {
+    id: 'ofm', vector: true, style: 'https://tiles.openfreemap.org/styles/positron',
+    attr: '<a href="https://openfreemap.org" target="_blank" rel="noopener">OpenFreeMap</a> &copy; <a href="https://www.openmaptiles.org/" target="_blank" rel="noopener">OpenMapTiles</a> &copy; <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a>',
+  },
+  {
+    id: 'gsi', url: 'https://cyberjapandata.gsi.go.jp/xyz/pale/{z}/{x}/{y}.png', opt: { maxNativeZoom: 18, maxZoom: 20 },
+    attr: '<a href="https://maps.gsi.go.jp/development/ichiran.html" target="_blank" rel="noopener">地理院タイル</a>',
+  },
+  {
+    id: 'osm', url: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png', opt: { maxNativeZoom: 19, maxZoom: 20 },
+    attr: '&copy; <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a>',
+  },
+];
+
+// 淡い配色(アプリのクリーム・ミントに合わせる)。地図の色を変えるときはここを調整する。
+const MAP_TONE = {
+  background: '#F8F3EA', // 地面
+  water: '#D7ECE5',      // 海・川
+  green: '#E5EEDC',      // 公園・緑地
+  building: '#EEE6D9',   // 建物
+  landuse: '#F4EEE4',    // 住宅地など
+  road: '#FFFFFF',       // 道路
+  roadEdge: '#EBE2D4',   // 道路のふち・線路
+  boundary: '#E3D8C6',   // 境界線
+  label: '#8C8178',      // 地名の文字
+  labelHalo: '#FBF6EC',  // 文字のふち
+};
+
+const vectorOK = (() => {
+  if (typeof L === 'undefined' || typeof maplibregl === 'undefined' || typeof L.maplibreGL !== 'function') return false;
+  try {
+    const c = document.createElement('canvas');
+    return !!(c.getContext('webgl2') || c.getContext('webgl'));
+  } catch {
+    return false;
+  }
+})();
+let provIdx = vectorOK ? 0 : 1;
+const baseLayers = [];
+
+function paleStyle(gl) {
+  const set = (id, prop, val) => { try { gl.setPaintProperty(id, prop, val); } catch { /* その層にない設定は無視 */ } };
+  try {
+    gl.getStyle().layers.forEach((l) => {
+      const id = l.id.toLowerCase();
+      // 情報量を減らす(お店・番地・駅などのラベルを隠す)
+      if (/poi|housenum|aerodrome|airport|transit|rail.*label|oneway|shield/.test(id)) {
+        gl.setLayoutProperty(l.id, 'visibility', 'none');
+        return;
+      }
+      if (l.type === 'background') set(l.id, 'background-color', MAP_TONE.background);
+      else if (l.type === 'fill') {
+        if (/water|ocean|lake|river/.test(id)) set(l.id, 'fill-color', MAP_TONE.water);
+        else if (/park|wood|forest|grass|green|landcover|cemetery|pitch/.test(id)) set(l.id, 'fill-color', MAP_TONE.green);
+        else if (/building/.test(id)) { set(l.id, 'fill-color', MAP_TONE.building); set(l.id, 'fill-outline-color', MAP_TONE.roadEdge); }
+        else if (/landuse|residential|industrial|commercial/.test(id)) set(l.id, 'fill-color', MAP_TONE.landuse);
+      } else if (l.type === 'line') {
+        if (/water|river|stream|canal/.test(id)) set(l.id, 'line-color', MAP_TONE.water);
+        else if (/boundary|admin/.test(id)) set(l.id, 'line-color', MAP_TONE.boundary);
+        else if (/casing|rail|railway|transit/.test(id)) set(l.id, 'line-color', MAP_TONE.roadEdge);
+        else if (/highway|road|street|path|transport|bridge|tunnel/.test(id)) set(l.id, 'line-color', MAP_TONE.road);
+      } else if (l.type === 'symbol' && l.layout && l.layout['text-field']) {
+        gl.setLayoutProperty(l.id, 'text-field', ['coalesce', ['get', 'name:ja'], ['get', 'name']]);
+        set(l.id, 'text-color', MAP_TONE.label);
+        set(l.id, 'text-halo-color', MAP_TONE.labelHalo);
+      }
+    });
+  } catch { /* スタイルが読めないときはそのまま */ }
+}
+
+function makeBase(targetMap, withAttr) {
+  if (PROVIDERS[provIdx].vector && !vectorOK) provIdx++;
+  const pv = PROVIDERS[provIdx];
+  const rec = { map: targetMap, withAttr, pv, errs: 0, oks: 0 };
+  if (pv.vector) {
+    rec.layer = L.maplibreGL({ style: pv.style, attribution: withAttr ? pv.attr : '', interactive: false }).addTo(targetMap);
+    const gl = rec.layer.getMaplibreMap();
+    let loaded = false;
+    gl.on('style.load', () => paleStyle(gl));
+    gl.on('load', () => { loaded = true; });
+    gl.on('error', () => { rec.errs++; if (!loaded && rec.errs >= 3 && rec.pv === PROVIDERS[provIdx]) nextProvider(); });
+    setTimeout(() => { if (!loaded && rec.pv === PROVIDERS[provIdx] && baseLayers.includes(rec)) nextProvider(); }, 10000);
+  } else {
+    rec.layer = L.tileLayer(pv.url, { attribution: withAttr ? pv.attr : '', ...pv.opt }).addTo(targetMap);
+    rec.layer.on('tileload', () => rec.oks++);
+    rec.layer.on('tileerror', () => { rec.errs++; if (rec.oks === 0 && rec.errs >= 4 && rec.pv === PROVIDERS[provIdx]) nextProvider(); });
+  }
+  baseLayers.push(rec);
+  applyTileTone();
+  return rec.layer;
+}
+
+function nextProvider() {
+  if (provIdx >= PROVIDERS.length - 1) {
+    toast('地図を読み込めなかったよ。電波を確認してね');
+    return;
+  }
+  provIdx++;
+  const olds = baseLayers.splice(0);
+  olds.forEach((r) => { r.map.removeLayer(r.layer); makeBase(r.map, r.withAttr); });
+}
+
+function dropBase(targetMap) {
+  for (let i = baseLayers.length - 1; i >= 0; i--) if (baseLayers[i].map === targetMap) baseLayers.splice(i, 1);
+}
+
+// 画像タイル(予備の地図)のときだけ、CSSで淡いセピア寄りに整える
+function applyTileTone() {
+  document.documentElement.classList.toggle('tiles-soft', !PROVIDERS[provIdx].vector);
 }
 
 function ensureMap() {
   if (map || typeof L === 'undefined') return map;
   map = L.map('map', { zoomControl: false }).setView(DEFAULT_CENTER, 15);
-  baseTiles({ attribution: true }).addTo(map);
+  map.attributionControl.setPrefix(false);
+  makeBase(map, true);
   markerLayer = L.layerGroup().addTo(map);
   map.on('moveend', updateMapCount);
   map.on('click', () => ($('#mapCard').hidden = true));
@@ -715,7 +820,7 @@ function showTags(draft, { isNew, back }) {
     const lastPlaced = signs.find((s) => s.lat != null);
     const center = has ? [draft.lat, draft.lng] : lastPlaced ? [lastPlaced.lat, lastPlaced.lng] : DEFAULT_CENTER;
     mini = L.map('miniMap', { zoomControl: false, attributionControl: false }).setView(center, has ? 17 : 14);
-    baseTiles({ attribution: false }).addTo(mini);
+    makeBase(mini, false);
     const icon = L.divIcon({ className: 'pin', html: `<img src="${thumbUrl}" alt="">`, iconSize: [44, 44], iconAnchor: [22, 22] });
     const place = (ll) => {
       draft.lat = ll.lat; draft.lng = ll.lng;
@@ -741,14 +846,14 @@ function showTags(draft, { isNew, back }) {
 
   function finish() {
     flowToken++;
-    mini?.remove();
+    if (mini) { dropBase(mini); mini.remove(); }
     URL.revokeObjectURL(thumbUrl);
     if (aiUrl) URL.revokeObjectURL(aiUrl);
     closeFlow();
   }
 
   $('#tagsBack').onclick = () => {
-    if (isNew && back) { flowToken++; mini?.remove(); URL.revokeObjectURL(thumbUrl); if (aiUrl) URL.revokeObjectURL(aiUrl); back(); }
+    if (isNew && back) { flowToken++; if (mini) { dropBase(mini); mini.remove(); } URL.revokeObjectURL(thumbUrl); if (aiUrl) URL.revokeObjectURL(aiUrl); back(); }
     else finish();
   };
   $('#saveBtn').onclick = async () => {
