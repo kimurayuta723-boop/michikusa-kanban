@@ -1,6 +1,6 @@
 // オフラインでも図鑑を開けるように、アプリ本体をキャッシュする。
 // ファイルを更新したら VERSION を上げると、次回起動時に入れ替わる。
-const VERSION = 'v2';
+const VERSION = 'v3';
 const CACHE = `michikusa-${VERSION}`;
 const SHELL = [
   './',

@@ -287,14 +287,20 @@ function structuredCloneSign(s) {
 // ---------- 地図 ----------
 let map = null, markerLayer = null, hereMarker = null, mapFitted = false;
 
+// 背景地図:国土地理院の淡色地図(申請不要・出典表示が必要)
+function baseTiles({ attribution }) {
+  return L.tileLayer('https://cyberjapandata.gsi.go.jp/xyz/pale/{z}/{x}/{y}.png', {
+    minZoom: 5,
+    maxNativeZoom: 18,
+    maxZoom: 20,
+    attribution: attribution ? '<a href="https://maps.gsi.go.jp/development/ichiran.html" target="_blank" rel="noopener">地理院タイル</a>' : '',
+  });
+}
+
 function ensureMap() {
   if (map || typeof L === 'undefined') return map;
   map = L.map('map', { zoomControl: false }).setView(DEFAULT_CENTER, 15);
-  L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', {
-    subdomains: 'abcd',
-    maxZoom: 20,
-    attribution: '&copy; OpenStreetMap contributors &copy; CARTO',
-  }).addTo(map);
+  baseTiles({ attribution: true }).addTo(map);
   markerLayer = L.layerGroup().addTo(map);
   map.on('moveend', updateMapCount);
   map.on('click', () => ($('#mapCard').hidden = true));
@@ -709,7 +715,7 @@ function showTags(draft, { isNew, back }) {
     const lastPlaced = signs.find((s) => s.lat != null);
     const center = has ? [draft.lat, draft.lng] : lastPlaced ? [lastPlaced.lat, lastPlaced.lng] : DEFAULT_CENTER;
     mini = L.map('miniMap', { zoomControl: false, attributionControl: false }).setView(center, has ? 17 : 14);
-    L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', { subdomains: 'abcd', maxZoom: 20 }).addTo(mini);
+    baseTiles({ attribution: false }).addTo(mini);
     const icon = L.divIcon({ className: 'pin', html: `<img src="${thumbUrl}" alt="">`, iconSize: [44, 44], iconAnchor: [22, 22] });
     const place = (ll) => {
       draft.lat = ll.lat; draft.lng = ll.lng;
